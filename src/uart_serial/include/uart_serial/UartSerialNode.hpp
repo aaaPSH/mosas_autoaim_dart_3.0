@@ -16,6 +16,7 @@ class UartSerialNode : public rclcpp::Node
 public:
   explicit UartSerialNode(const rclcpp::NodeOptions & options);
   bool send_command(double speed, bool fire);
+  bool handle_serial_frame();
   ~UartSerialNode();
 
 private:
@@ -25,6 +26,11 @@ private:
     const std::vector<rclcpp::Parameter> & parameters);
 
   rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr green_dots_sub_;
+
+  rclcpp::TimerBase::SharedPtr timer_;
+  std::vector<uint8_t> serial_buffer_;
+  void parse_received_data();
+
   serial::Serial serial_;
 
   OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;

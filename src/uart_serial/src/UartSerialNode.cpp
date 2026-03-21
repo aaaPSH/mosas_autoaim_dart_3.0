@@ -5,6 +5,70 @@
 namespace uart_serial
 {
 
+void UartSerialNode::parse_received_data()
+{
+  const size_t FRAME_LENGTH = 6; 
+
+  while (rx_buffer_.size() >= FRAME_LENGTH) {
+    if (rx_buffer_[0] == 0x55 && rx_buffer_[1] == 0xAA) {
+      uint8_t checksum = 0;
+      for (size_t i = 0; i < FRAME_LENGTH - 1; i++) {
+        checksum += rx_buffer_[i];
+      }
+
+      if (checksum == rx_buffer_[FRAME_LENGTH - 1]) {
+        // 校验成功，提取数据并处理
+
+
+
+
+
+
+        rx_buffer_.erase(rx_buffer_.begin(), rx_buffer_.begin() + FRAME_LENGTH);
+      } else {
+        // 校验和失败：可能是误判的帧头，丢弃当前字节（或者整帧），继续往后找
+        RCLCPP_WARN(this->get_logger(), "串口接收校验和错误！");
+        rx_buffer_.erase(rx_buffer_.begin()); // 弹出第一个字节，重新对齐
+      }
+    } else {
+      // 当前头部不是 0x55，说明数据错位，弹出一个字节，继续寻找正确帧头
+      rx_buffer_.erase(rx_buffer_.begin());
+    }
+  }
+}
+
+bool UartSerialNode::handle_serial_frame(){
+  if (serial_.isOpen())
+  {
+    try {
+      size_t available_bytes = serial_.available();
+      if (available_bytes > 0) {
+        std::vector<uint8_t> temp_buffer(available_bytes);
+        size_t bytes_read = serial_.read(temp_buffer.data(), available_bytes);
+        RCLCPP_DEBUG(this->get_logger(), "Received %zu bytes from serial port", bytes_read);
+        // 这里可以添加对接收数据的处理逻辑
+        rx_buffer_.insert(rx_buffer_.end(), temp_buffer.begin(), temp_buffer.begin() + bytes_read);
+
+        if (rx_buffer_.size() > 1024) {
+            RCLCPP_WARN(this->get_logger(), "接收缓存区溢出，强制清空以防内存泄漏！");
+            rx_buffer_.clear();
+        }
+
+        parse_received_data();
+      }
+      return true;
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(this->get_logger(), "串口读取失败: %s", e.what());
+      serial_.close();
+      return false;
+    }
+  } else {
+    RCLCPP_ERROR(this->get_logger(), "串口未打开，无法读取数据！");
+    return false;
+  }
+  
+}
+
 bool UartSerialNode::send_command(double speed, bool fire)
 {
   uint8_t tx_buffer[6];
@@ -89,6 +153,9 @@ UartSerialNode::UartSerialNode(const rclcpp::NodeOptions & options)
   green_dots_sub_ = this->create_subscription<autoaim_interfaces::msg::GreenDot>(
     "/detections/green_dots", rclcpp::SensorDataQoS(),
     std::bind(&UartSerialNode::green_dots_callback, this, std::placeholders::_1));
+
+  timer_ = this->create_wall_timer(
+    std::chrono::milliseconds(10), std::bind(&UartSerialNode::handle_serial_frame, this));
 }
 
 UartSerialNode::~UartSerialNode()
