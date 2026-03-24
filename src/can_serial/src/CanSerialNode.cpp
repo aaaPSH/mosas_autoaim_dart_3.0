@@ -4,124 +4,10 @@
 
 namespace can_serial
 {
-
-enum Enum_Windmill_Type : uint8_t  // 风车类型
-{
-  Windmill_Type_Small = 0,
-  Windmill_Type_Big,
-};
-
-enum Enum_MiniPC_Type : uint8_t  // 迷你主机控制类型
-{
-  MiniPC_Type_Nomal = 0,  // 装甲板
-  MiniPC_Type_Windmill,   // 风车
-};
-
-enum Enum_MiniPC_Game_Stage : uint8_t  // 比赛阶段
-{
-  MiniPC_Game_Stage_NOT_STARTED = 0,
-  MiniPC_Game_Stage_READY,
-  MiniPC_Game_Stage_SELF_TESTING,
-  MiniPC_Game_Stage_5S_COUNTDOWN,
-  MiniPC_Game_Stage_BATTLE,
-  MiniPC_Game_Stage_SETTLEMENT,
-};
-
-void CanSerialNode::parse_received_data()
-{
-  const size_t FRAME_LENGTH = 6; 
-
-  while (rx_buffer_.size() >= FRAME_LENGTH) {
-    if (rx_buffer_[0] == 0x55 && rx_buffer_[1] == 0xAA) {
-      uint8_t checksum = 0;
-      for (size_t i = 0; i < FRAME_LENGTH - 1; i++) {
-        checksum += rx_buffer_[i];
-      }
-
-      if (checksum == rx_buffer_[FRAME_LENGTH - 1]) {
-        // 校验成功，提取数据并处理
-
-
-
-
-
-
-        rx_buffer_.erase(rx_buffer_.begin(), rx_buffer_.begin() + FRAME_LENGTH);
-      } else {
-        // 校验和失败：可能是误判的帧头，丢弃当前字节（或者整帧），继续往后找
-        RCLCPP_WARN(this->get_logger(), "串口接收校验和错误！");
-        rx_buffer_.erase(rx_buffer_.begin()); // 弹出第一个字节，重新对齐
-      }
-    } else {
-      // 当前头部不是 0x55，说明数据错位，弹出一个字节，继续寻找正确帧头
-      rx_buffer_.erase(rx_buffer_.begin());
-    }
-  }
-}
-
-bool CanSerialNode::handle_can_frame(){
-  if (serial_.isOpen())
-  {
-    try {
-      size_t available_bytes = serial_.available();
-      if (available_bytes > 0) {
-        std::vector<uint8_t> temp_buffer(available_bytes);
-        size_t bytes_read = serial_.read(temp_buffer.data(), available_bytes);
-        RCLCPP_DEBUG(this->get_logger(), "Received %zu bytes from serial port", bytes_read);
-        // 这里可以添加对接收数据的处理逻辑
-        rx_buffer_.insert(rx_buffer_.end(), temp_buffer.begin(), temp_buffer.begin() + bytes_read);
-
-        if (rx_buffer_.size() > 1024) {
-            RCLCPP_WARN(this->get_logger(), "接收缓存区溢出，强制清空以防内存泄漏！");
-            rx_buffer_.clear();
-        }
-
-        parse_received_data();
-      }
-      return true;
-    } catch (const std::exception & e) {
-      RCLCPP_ERROR(this->get_logger(), "串口读取失败: %s", e.what());
-      serial_.close();
-      return false;
-    }
-  } else {
-    RCLCPP_ERROR(this->get_logger(), "串口未打开，无法读取数据！");
-    return false;
-  }
-  
-}
-
-bool CanSerialNode::send_command(can_frame& frame, double speed, bool fire)
-{
-  std::memset(frame.data, 0, sizeof(frame.data));
-  int16_t speed_int = static_cast<int16_t>(speed);
-
-  frame.data[0] = 0x55;
-  frame.data[1] = 0xAA;
-
-  frame.data[2] = speed_int & 0xFF;
-  frame.data[3] = (speed_int >> 8) & 0xFF;
-  frame.data[4] = fire ? 0x01 : 0x00;
-
-  uint8_t checksum = 0;
-  for (int i = 0; i < 5; i++) {
-    checksum += frame.data[i];
-  }
-  frame.data[5] = checksum;
-
-  try {
-    can_core_->send_frame(frame);
-  } catch (const std::exception & e) {
-    RCLCPP_ERROR(get_logger(), "CAN 发送异常: %s", e.what());
-  }
-}
-
 CanSerialNode::CanSerialNode(const rclcpp::NodeOptions & options)
 : Node("can_serial_node", options)
 {
   // ================= [ 1. 声明并读取参数 ] =================
-  this->declare_parameter("port_name", "/dev/ttyUSB0");
-  this->declare_parameter("baud_rate", 115200);
   this->declare_parameter("debug_level", 1);
 
   this->declare_parameter("Kp", 0.01);
@@ -129,9 +15,6 @@ CanSerialNode::CanSerialNode(const rclcpp::NodeOptions & options)
   this->declare_parameter("Kd", 0.0);
   this->declare_parameter("max_speed", 100.0);
   this->declare_parameter("deadzone", 1.0);
-
-  std::string port_name = this->get_parameter("port_name").as_string();
-  int baud_rate = this->get_parameter("baud_rate").as_int();
 
   pid_params_.Kp = this->get_parameter("Kp").as_double();
   pid_params_.Ki = this->get_parameter("Ki").as_double();
@@ -167,8 +50,8 @@ CanSerialNode::CanSerialNode(const rclcpp::NodeOptions & options)
     "/detections/green_dots", rclcpp::SensorDataQoS(),
     std::bind(&CanSerialNode::green_dots_callback, this, std::placeholders::_1));
 
-  timer_ = this->create_wall_timer(
-    std::chrono::milliseconds(10), std::bind(&CanSerialNode::handle_serial_frame, this));
+  // timer_ = this->create_wall_timer(
+  //   std::chrono::milliseconds(10), std::bind(&CanSerialNode::handle_can_frame, this));
 }
 // ==========================================================
 // 动态参数回调处理函数
@@ -204,9 +87,91 @@ rcl_interfaces::msg::SetParametersResult CanSerialNode::parameters_callback(
 
   return result;
 }
+// void CanSerialNode::parse_received_data()
+// {
+//   const size_t FRAME_LENGTH = 6; 
+
+//   while (rx_buffer_.size() >= FRAME_LENGTH) {
+//     if (rx_buffer_[0] == 0x55 && rx_buffer_[1] == 0xAA) {
+//       uint8_t checksum = 0;
+//       for (size_t i = 0; i < FRAME_LENGTH - 1; i++) {
+//         checksum += rx_buffer_[i];
+//       }
+
+//       if (checksum == rx_buffer_[FRAME_LENGTH - 1]) {
+//         // 校验成功，提取数据并处理
+
+
+
+
+
+
+//         rx_buffer_.erase(rx_buffer_.begin(), rx_buffer_.begin() + FRAME_LENGTH);
+//       } else {
+//         // 校验和失败：可能是误判的帧头，丢弃当前字节（或者整帧），继续往后找
+//         RCLCPP_WARN(this->get_logger(), "串口接收校验和错误！");
+//         rx_buffer_.erase(rx_buffer_.begin()); // 弹出第一个字节，重新对齐
+//       }
+//     } else {
+//       // 当前头部不是 0x55，说明数据错位，弹出一个字节，继续寻找正确帧头
+//       rx_buffer_.erase(rx_buffer_.begin());
+//     }
+//   }
+// }
+
+void CanSerialNode::handle_can_frame(const can_frame & frame){
+
+  RCLCPP_INFO(this->get_logger(),"已经收到消息");
+  RCLCPP_INFO(get_logger(), "收到CAN帧 - ID: 0x%x, 长度: %d", frame.can_id, frame.can_dlc);
+    // 仅处理ID为0xA0的帧
+    if (frame.can_id == 0x100 && frame.can_dlc >= 7)
+    {
+      std::stringstream ss;
+      for (size_t i = 0; i < frame.can_dlc; ++i) {
+          ss << std::setw(2) << std::setfill('0') << std::hex 
+            << static_cast<int>(frame.data[i]) << " ";
+      }
+      RCLCPP_INFO(this->get_logger(), "CAN Received -> %s", ss.str().c_str());
+    }
+}
+
+void CanSerialNode::send_command(can_frame& frame, double speed, bool fire)
+{
+  std::memset(frame.data, 0, sizeof(frame.data));
+  int16_t speed_int = static_cast<int16_t>(speed);
+
+  frame.data[0] = 0xAA;
+  frame.data[1] = 0x55;
+  frame.data[2] = fire ? 0x01 : 0x00;
+  
+
+  frame.data[3] = speed_int & 0xFF;
+  frame.data[4] = (speed_int >> 8) & 0xFF;
+  frame.data[5] = 0x00;
+  
+
+  uint8_t checksum = 0;
+  for (int i = 0; i < frame.can_dlc-2; i++) {
+    checksum += frame.data[i];
+  }
+  frame.data[6] = checksum;
+  frame.data[7] = 0x01;
+
+  try {
+    can_core_->send_frame(frame);
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "CAN 发送异常: %s", e.what());
+  }
+}
+
 
 void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg)
 {
+
+  can_frame frame;
+  frame.can_id = 0x106;
+  frame.can_dlc = 8;
+
   rclcpp::Time current_time = msg->header.stamp;
   double current_x = msg->x;
   double current_error = msg->d_pixel;
@@ -224,11 +189,12 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
     lost_frames_count_++;
     if (lost_frames_count_ <= MAX_LOST_TOLERANCE) {
       RCLCPP_INFO(
-        this->get_logger(), "丢帧：（%d/%d) %.2f", lost_frames_count_, MAX_LOST_TOLERANCE,
+        this->get_logger(), "丢帧：（%d/%d) %.2d", lost_frames_count_, MAX_LOST_TOLERANCE,
         last_valid_speed_);
-      send_command(last_valid_speed_, false);
+      send_command(frame, last_valid_speed_, false);
     } else {
-      send_command(0, false);
+      send_command(frame, 0, false);
+      //test_count++;
       RCLCPP_INFO(this->get_logger(), "NO TARGET!");
       my_pid_.reset();
       current_state_ = AimState::TRACKING;
@@ -257,12 +223,12 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
       double target_speed = my_pid_.compute(current_error, dt);
 
       if (target_speed == 0.0) {
-        send_command(0, false);
+        send_command(frame, 0, false);
         current_state_ = AimState::VERIFYING;
         history_x_.clear();
         RCLCPP_INFO(this->get_logger(), "进入死区，刹车并开始多帧核实...");
       } else {
-        send_command(target_speed, false);
+        send_command(frame, target_speed, false);
         last_valid_speed_ = target_speed;
       }
       break;
@@ -289,11 +255,11 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
     }
 
     case AimState::LOCKED: {
-      send_command(0, true);
+      send_command(frame, 0, true);
       if (std::abs(current_error) > 3.0) {
         current_state_ = AimState::TRACKING;
         my_pid_.reset();
-        RCLCPP_WARN(this->get_logger(), "重新追击！");
+        RCLCPP_WARN(this->get_logger(), "重新瞄准");
       }
       break;
     }
@@ -303,4 +269,4 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
 }  // namespace uart_serial
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(uart_serial::CanSerialNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(can_serial::CanSerialNode)

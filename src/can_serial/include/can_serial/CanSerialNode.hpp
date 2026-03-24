@@ -1,4 +1,5 @@
-#include <serial/serial.h>
+#ifndef CAN_SERIAL__CAN_SERIAL_NODE_HPP_
+#define CAN_SERIAL__CAN_SERIAL_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <vector>
@@ -10,12 +11,12 @@
 
 namespace can_serial
 {
-class UartSerialNode : public rclcpp::Node
+class CanSerialNode : public rclcpp::Node
 {
 public:
-  explicit UartSerialNode(const rclcpp::NodeOptions & options);
-  bool send_command(double speed, bool fire);
-  bool handle_can_frame();
+  explicit CanSerialNode(const rclcpp::NodeOptions & options);
+  void send_command(can_frame& frame, double speed, bool fire);
+  void handle_can_frame(const can_frame & frame);
 
 private:
   void green_dots_callback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg);
@@ -27,11 +28,11 @@ private:
   rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr green_dots_sub_;
 
   rclcpp::TimerBase::SharedPtr timer_;
-  std::vector<uint8_t> serial_buffer_;
+  
   std::unique_ptr<CanSerial> can_core_;
-  void parse_received_data();
+  //void parse_received_data();
 
-  serial::Serial serial_;
+  //serial::Serial serial_;
 
   OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
@@ -42,7 +43,6 @@ private:
   int lost_frames_count_ = 0;
   int16_t last_valid_speed_ = 0;
 
-  const int SCALE = 100;
   const int MAX_LOST_TOLERANCE = 5;
   const size_t VERIFY_FRAMES = 5;
 
@@ -60,6 +60,9 @@ private:
   rclcpp::Time last_time_;
   rclcpp::Duration dt = rclcpp::Duration::from_seconds(0);
   bool first_run_ = true;
+
+
+  //int test_count = 0;
 };
 // 辅助函数：将 uint8_t 转换为二进制字符串
 std::string CanSerialNode::to_binary_string(uint8_t value)
@@ -71,5 +74,5 @@ std::string CanSerialNode::to_binary_string(uint8_t value)
   }
   return oss.str();
 }
-}  // namespace uart_serial
-#endif  // UART_SERIAL_NODE_HPP_
+} 
+#endif 
