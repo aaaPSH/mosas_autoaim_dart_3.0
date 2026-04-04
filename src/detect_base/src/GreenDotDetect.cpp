@@ -1,4 +1,4 @@
-#include "detect_dl_base/GreenDotDetect.hpp"
+#include "detect_base/GreenDotDetect.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +34,7 @@ cv::Point2f GreenDotDetect::computeSubPixelCenter(
   // 如果交集为空，返回几何中心
   if (safe_rect.empty()) {
     return cv::Point2f(
-      local_rect.x + local_rect.width / 2.0f, local_rect.y + local_rect.height / 2.0f);
+      local_rect.width / 2.0f, local_rect.height / 2.0f);
   }
 
   cv::Mat roi = roi_img(safe_rect);
@@ -102,11 +102,11 @@ bool GreenDotDetect::detect(const cv::Mat & raw_image, std::vector<Dot> & dots, 
   cv::Rect roi_rect(roi_x, roi_y, static_cast<int>(2 * search_w), params.search_strip_min_h);
   cv::Rect valid_roi = roi_rect & cv::Rect(0, 0, half_green.cols, half_green.rows);
 
-  cv::Rect strip_roi = roi_rect & valid_roi;
+  cv::Rect strip_roi = roi_rect & valid_roi;//合理范围内的roi条带
   if (strip_roi.empty()) strip_roi = cv::Rect(0, 0, half_green.cols, half_green.rows);
 
   // 截取搜索条带
-  cv::Mat roi_img = half_green(strip_roi);
+  cv::Mat roi_img = half_green(strip_roi);//在半分辨率图上地搜索条带
 
   // --- 步骤 3: 预处理 (二值化 + 膨胀) ---
   cv::Mat mask;
@@ -138,10 +138,10 @@ bool GreenDotDetect::detect(const cv::Mat & raw_image, std::vector<Dot> & dots, 
 
   // --- 步骤 4: 筛选循环 ---
   for (const auto & cnt : contours) {
-    cv::Rect r = cv::boundingRect(cnt);
+    cv::Rect r = cv::boundingRect(cnt);//roi坐标系下的外接矩
 
     // 计算全图坐标用于绘制
-    cv::Rect global_r = r;
+    cv::Rect global_r = r;//在半分辨率图像上的坐标
     global_r.x += strip_roi.x;
     global_r.y += strip_roi.y;
     cv::Point global_pt_draw(global_r.x, global_r.y);
@@ -266,7 +266,7 @@ bool GreenDotDetect::detect(const cv::Mat & raw_image, std::vector<Dot> & dots, 
       // A. 全图绘制
       cv::rectangle(debug_vis_full, global_r, cv::Scalar(0, 255, 0), 2);  // 亮绿色
       cv::Point2f global_center =
-        cv::Point2f(global_r.x, global_r.y) + local_sub_center - cv::Point2f(r.x, r.y);
+        cv::Point2f(global_r.x, global_r.y) + local_sub_center;
       cv::drawMarker(debug_vis_full, global_center, cv::Scalar(0, 255, 0), cv::MARKER_CROSS, 15, 2);
       cv::putText(
         debug_vis_full, cv::format("%.1f", ratio_gr), global_pt_draw - cv::Point(0, 5),

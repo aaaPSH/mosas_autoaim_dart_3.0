@@ -1,4 +1,4 @@
-#include "CanSerialCore.hpp"
+#include "can_serial/CanSerialCore.hpp"
 
 CanSerial::CanSerial(const std::string & interface)
 : can_interface_(interface), stream_(io_service_)

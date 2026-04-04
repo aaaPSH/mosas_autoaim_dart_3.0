@@ -5,8 +5,8 @@
 
 #include "autoaim_interfaces/msg/green_dot.hpp"
 #include "cv_bridge/cv_bridge.h"
-#include "detect_dl_base/Dot.hpp"
-#include "detect_dl_base/GreenDotDetect.hpp"
+#include "detect_base/Dot.hpp"
+#include "detect_base/GreenDotDetect.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -32,8 +32,6 @@ private:
 
   // 调试开关
   bool debug_mode_ = false;
-  bool save_images_ = false;    // 【默认开启】自动保存
-  double save_interval_ = 0.5;  // 保存冷却时间 (秒)
 
   DetectParams current_params_;
 
@@ -337,15 +335,5 @@ private:
       last_fps_time_ = now;
     }
 
-    if (save_images_) {
-      auto save_diff_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count();
-      double save_diff_sec = save_diff_ms / 1000.0;
-
-      if (save_diff_sec > save_interval_) {
-        save_image_to_disk(raw_frame);
-        last_save_time_ = now;  // 重置计时器
-      }
-    }
   }
 };

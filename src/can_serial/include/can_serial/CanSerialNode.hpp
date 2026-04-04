@@ -34,8 +34,8 @@ private:
 
   OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
-  enum class AimState { TRACKING, VERIFYING, LOCKED };
-  AimState current_state_ = AimState::TRACKING;
+  enum class AimState { TRACKING, VERIFYING, LOCKED, LOST };
+  AimState current_state_ = AimState::LOST;
   std::vector<double> history_x_;
 
   int lost_frames_count_ = 0;
@@ -43,6 +43,18 @@ private:
 
   const int MAX_LOST_TOLERANCE = 5;
   const size_t VERIFY_FRAMES = 5;
+
+  // CAN通信常量
+  static constexpr uint32_t CAN_TX_ID = 0x106;      // 发送CAN帧ID
+  static constexpr uint32_t CAN_RX_ID = 0x100;      // 接收CAN帧ID  
+  static constexpr uint8_t CAN_FRAME_DLC = 8;       // CAN帧数据长度
+  static constexpr uint8_t CAN_MIN_RX_DLC = 7;      // 最小接收数据长度
+  static constexpr uint8_t FIRE_ON = 0x01;          // 开火标志值
+  static constexpr uint8_t FIRE_OFF = 0x00;         // 关闭开火标志值
+
+  // 控制逻辑常量
+  static constexpr double ZERO_ERROR_THRESHOLD = 0.0;      // 零误差阈值
+  static constexpr double DEADZONE_MULTIPLIER = 1.5;       // 死区放大系数
 
   ScrewPID my_pid_{0.8, 0.1, 0.05, 5.0, 100.0};
 
@@ -73,4 +85,4 @@ std::string CanSerialNode::to_binary_string(uint8_t value)
   return oss.str();
 }
 } 
-#endif 
+#endif

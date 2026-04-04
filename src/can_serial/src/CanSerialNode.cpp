@@ -95,7 +95,7 @@ void CanSerialNode::handle_can_frame(const can_frame & frame){
   // RCLCPP_INFO(this->get_logger(),"已经收到消息");
   // RCLCPP_INFO(get_logger(), "收到CAN帧 - ID: 0x%x, 长度: %d", frame.can_id, frame.can_dlc);
   //   // 仅处理ID为0xA0的帧
-  //   if (frame.can_id == 0x100 && frame.can_dlc >= 7)
+  //   if (frame.can_id == CAN_RX_ID && frame.can_dlc >= CAN_MIN_RX_DLC)
   //   {
   //     std::stringstream ss;
   //     for (size_t i = 0; i < frame.can_dlc; ++i) {
@@ -108,13 +108,13 @@ void CanSerialNode::handle_can_frame(const can_frame & frame){
 
 void CanSerialNode::send_command(can_frame& frame, double speed, bool fire)
 {
-  frame.can_id = 0x106;
-  frame.can_dlc = 8;
+  frame.can_id = CAN_TX_ID;
+  frame.can_dlc = CAN_FRAME_DLC;
   
   std::memset(frame.data, 0, sizeof(frame.data));
   int16_t speed_int = static_cast<int16_t>(speed);
 
-  frame.data[0] = fire ? 0x01 : 0x00;
+  frame.data[0] = fire ? FIRE_ON : FIRE_OFF;
   frame.data[1] = (speed_int >> 8) & 0xFF;
   frame.data[2] = speed_int & 0xFF;
   
@@ -135,9 +135,7 @@ void CanSerialNode::send_command(can_frame& frame, double speed, bool fire)
 
 void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg)
 {
-
   can_frame frame;
-
   rclcpp::Time current_time = msg->header.stamp;
   double current_x = msg->x;
   double current_error = msg->d_pixel;
@@ -148,51 +146,43 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
     return;
   }
 
-  // ==========================================
-  // 丢帧拦截与惯性滑行机制
-  // ==========================================
-  if (current_x < 0.0) {
-    lost_frames_count_++;
-    if (lost_frames_count_ <= MAX_LOST_TOLERANCE) {
-      RCLCPP_INFO(
-        this->get_logger(), "丢帧：（%d/%d) %.2d", lost_frames_count_, MAX_LOST_TOLERANCE,
-        last_valid_speed_);
-      send_command(frame, last_valid_speed_, false);
-    } else {
-      send_command(frame, 0, false);
-      //test_count++;
-      RCLCPP_INFO(this->get_logger(), "NO TARGET!");
-      my_pid_.reset();
-      current_state_ = AimState::TRACKING;
-    }
-    return;
-  }
-
-  // ==========================================
-  // 2.自动吸收丢帧时间
-  // ==========================================
-  lost_frames_count_ = 0;
   double dt = (current_time - last_time_).seconds();
-
-  if (dt > 0.5) {
-    dt = 0.014;
-    my_pid_.reset();
-  }
-
   last_time_ = current_time;
 
   // ==========================================
-  // 3.动静分离状态机
+  // [全局守卫]：无论在什么状态，优先处理目标丢失
+  // ==========================================
+  if (current_x < 0.0) {
+    lost_frames_count_++;
+    
+    // 还在容忍范围内，保持最后一次的速度（惯性滑行）
+    if (lost_frames_count_ <= MAX_LOST_TOLERANCE) {
+      send_command(frame, last_valid_speed_, false);
+      return; 
+    } 
+    else {
+      RCLCPP_INFO(this->get_logger(), "状态切换: -> LOST");
+      current_state_ = AimState::LOST;
+
+    }
+  } else {
+    // 看到目标了，清零丢帧计数器
+    lost_frames_count_ = 0;
+  }
+
+  // ==========================================
+  // 3. 动静分离状态机 (只有在看到目标，或被判定为 LOST 时才会执行)
   // ==========================================
   switch (current_state_) {
     case AimState::TRACKING: {
       double target_speed = my_pid_.compute(current_error, dt);
 
-      if (target_speed == 0.0) {
+      if (std::abs(current_error) == ZERO_ERROR_THRESHOLD) {
         send_command(frame, 0, false);
+        RCLCPP_INFO(this->get_logger(), "状态切换: TRACKING -> VERIFYING");
         current_state_ = AimState::VERIFYING;
         history_x_.clear();
-        RCLCPP_INFO(this->get_logger(), "进入死区，刹车并开始多帧核实...");
+        history_x_.push_back(current_x); // 把当前的合格数据放进去
       } else {
         send_command(frame, target_speed, false);
         last_valid_speed_ = target_speed;
@@ -201,20 +191,22 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
     }
 
     case AimState::VERIFYING: {
+      send_command(frame, 0, false);
       history_x_.push_back(current_x);
 
       if (history_x_.size() >= VERIFY_FRAMES) {
         double sum = 0;
         for (double x : history_x_) sum += x;
         double avg_x = sum / VERIFY_FRAMES;
+        
         if (std::abs(avg_x) <= pid_params_.deadzone) {
           current_state_ = AimState::LOCKED;
-          RCLCPP_INFO(this->get_logger(), "完美锁定！真理均值坐标: %.2f", avg_x);
+          RCLCPP_INFO(this->get_logger(), "完美锁定!(均值%.2f)", avg_x);
         } else {
           current_state_ = AimState::TRACKING;
           history_x_.clear();
           my_pid_.reset();
-          RCLCPP_WARN(this->get_logger(), "假锁定(均值%.2f)，打回 TRACKING 继续微调", avg_x);
+          RCLCPP_WARN(this->get_logger(), "假锁定(均值%.2f)", avg_x);
         }
       }
       break;
@@ -222,10 +214,27 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
 
     case AimState::LOCKED: {
       send_command(frame, 0, true);
-      if (std::abs(current_error) > 3.0) {
+      if (std::abs(current_error) > pid_params_.deadzone * DEADZONE_MULTIPLIER) {
+        RCLCPP_INFO(this->get_logger(), "状态切换: LOCKED -> TRACKING");
         current_state_ = AimState::TRACKING;
         my_pid_.reset();
-        RCLCPP_WARN(this->get_logger(), "重新瞄准");
+      }
+      break;
+    }
+
+    case AimState::LOST: {
+      if (current_x >= 0.0) {
+        // 目标重新出现了！
+        RCLCPP_INFO(this->get_logger(), "状态切换: LOST -> TRACKING");
+        current_state_ = AimState::TRACKING;
+        my_pid_.reset();
+        double target_speed = my_pid_.compute(current_error, dt);
+        send_command(frame, target_speed, false);
+        last_valid_speed_ = target_speed;
+      } else {
+        // 真的没看见，发 0 原地等待
+        send_command(frame, 0, false);
+        last_valid_speed_ = 0.0; 
       }
       break;
     }

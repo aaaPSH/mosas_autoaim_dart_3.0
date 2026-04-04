@@ -3,7 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-#include "detect_dl_base/Dot.hpp"
+#include "detect_base/Dot.hpp"
 
 // ==========================================
 // 数据结构定义

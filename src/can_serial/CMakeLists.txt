@@ -10,7 +10,7 @@ find_package(Boost REQUIRED ${Boost_COMPONENTS})
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/CanSerialNode.cpp
-  include/can_serial/CanSerialCore.cpp
+  src/CanSerialCore.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
