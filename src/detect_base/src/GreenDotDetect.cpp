@@ -382,8 +382,7 @@ bool GreenDotDetect::calculate_dots_yaw(std::vector<Dot> & dots)
     dots[i].yaw =
       std::atan(
         (dots[i].center.x - cameraMatrix.at<double>(0, 2)) / cameraMatrix.at<double>(0, 0)) *
-        (180.0 / CV_PI) +
-      params.yaw_offset;
+        (180.0 / CV_PI);
   }
   return true;
 }

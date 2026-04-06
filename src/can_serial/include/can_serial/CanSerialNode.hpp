@@ -53,7 +53,7 @@ private:
   static constexpr uint8_t FIRE_OFF = 0x00;         // 关闭开火标志值
 
   // 控制逻辑常量
-  static constexpr double ZERO_ERROR_THRESHOLD = 0.0;      // 零误差阈值
+  static constexpr double SCALE = 100;      // 零误差阈值
   static constexpr double DEADZONE_MULTIPLIER = 1.5;       // 死区放大系数
 
   ScrewPID my_pid_{0.8, 0.1, 0.05, 5.0, 100.0};

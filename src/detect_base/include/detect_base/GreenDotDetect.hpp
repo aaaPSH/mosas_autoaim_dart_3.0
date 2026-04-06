@@ -37,7 +37,7 @@ struct DetectParams
   double min_gb_ratio = 1.5;  // Green/Blue 能量比
 
   // --- 标定修正 ---
-  double yaw_offset = 0.0;  // 偏航角补偿 (度)
+  double pix_offset = 0.0;  // 偏航角补偿 (度)
 };
 
 /**

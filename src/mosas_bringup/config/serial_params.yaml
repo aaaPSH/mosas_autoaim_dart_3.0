@@ -1,4 +1,4 @@
-uart_serial_node:
+can_serial_node:
   ros__parameters:
     # PID 控制器参数
     Kp: 0.7                   # 比例系数 (默认值 0.01)

@@ -108,11 +108,12 @@ void CanSerialNode::handle_can_frame(const can_frame & frame){
 
 void CanSerialNode::send_command(can_frame& frame, double speed, bool fire)
 {
+  //RCLCPP_INFO(this->get_logger(),"%2.f",speed);
   frame.can_id = CAN_TX_ID;
   frame.can_dlc = CAN_FRAME_DLC;
   
   std::memset(frame.data, 0, sizeof(frame.data));
-  int16_t speed_int = static_cast<int16_t>(speed);
+  int16_t speed_int = static_cast<int16_t>(speed * SCALE);
 
   frame.data[0] = fire ? FIRE_ON : FIRE_OFF;
   frame.data[1] = (speed_int >> 8) & 0xFF;
@@ -161,7 +162,6 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
       return; 
     } 
     else {
-      RCLCPP_INFO(this->get_logger(), "状态切换: -> LOST");
       current_state_ = AimState::LOST;
 
     }
@@ -177,12 +177,12 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
     case AimState::TRACKING: {
       double target_speed = my_pid_.compute(current_error, dt);
 
-      if (std::abs(current_error) == ZERO_ERROR_THRESHOLD) {
+      if (std::abs(current_error) <  pid_params_.deadzone) {
         send_command(frame, 0, false);
         RCLCPP_INFO(this->get_logger(), "状态切换: TRACKING -> VERIFYING");
         current_state_ = AimState::VERIFYING;
         history_x_.clear();
-        history_x_.push_back(current_x); // 把当前的合格数据放进去
+        history_x_.push_back(current_error); // 把当前的合格数据放进去
       } else {
         send_command(frame, target_speed, false);
         last_valid_speed_ = target_speed;
@@ -192,7 +192,7 @@ void CanSerialNode::green_dots_callback(const autoaim_interfaces::msg::GreenDot:
 
     case AimState::VERIFYING: {
       send_command(frame, 0, false);
-      history_x_.push_back(current_x);
+      history_x_.push_back(current_error);
 
       if (history_x_.size() >= VERIFY_FRAMES) {
         double sum = 0;

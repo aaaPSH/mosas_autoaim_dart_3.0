@@ -87,7 +87,7 @@ public:
     this->declare_parameter("detect.detect_scale", 10.0);  // deg
     this->declare_parameter("detect.distance", 25000.0);   // mm
 
-    this->declare_parameter("detect.yaw_offset", 0.0);
+    this->declare_parameter("detect.pix_offset", 0.0);
 
     // 首次同步参数
     refresh_params();
@@ -152,7 +152,7 @@ private:
     this->get_parameter("detect.detect_scale", p.detect_scale);
     this->get_parameter("detect.distance", p.distance);
 
-    this->get_parameter("detect.yaw_offset", p.yaw_offset);
+    this->get_parameter("detect.pix_offset", p.pix_offset);
 
     // 更新算法内部状态
     detector_->update_params(p);
@@ -160,7 +160,7 @@ private:
     RCLCPP_INFO(
       this->get_logger(),
       "[Params Updated] Debug:%d | V_Low:%d | Area:%.1f-%.1f | Dist:%.0f | YawOff:%.1f",
-      debug_mode_, p.v_low, p.min_area, p.max_area, p.distance, p.yaw_offset);
+      debug_mode_, p.v_low, p.min_area, p.max_area, p.distance, p.pix_offset);
   }
 
   // -----------------------------------------------------------------
@@ -214,11 +214,11 @@ private:
       } else if (name == "detect.distance") {
         current_params_.distance = param.as_double();
         algo_params_changed = true;
-      } else if (name == "detect.yaw_offset") {
-        current_params_.yaw_offset = param.as_double();
+      } else if (name == "detect.pix_offset") {
+        current_params_.pix_offset = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.detect_scale") {
-        current_params_.yaw_offset = param.as_double();
+        current_params_.pix_offset = param.as_double();
         algo_params_changed = true;
       }
     }
@@ -309,7 +309,7 @@ private:
       target.x = d.center.x;
       target.y = d.center.y;
       target.angle_yaw = d.yaw;
-      target.d_pixel = target.x - camera_matrix_.at<double>(0, 2);
+      target.d_pixel = target.x - camera_matrix_.at<double>(0, 2) + current_params_.pix_offset;  // 加上像素偏移补偿
 
       target_pub->publish(target);
     } else if (!found) {
@@ -323,17 +323,17 @@ private:
       target_pub->publish(target);
     }
 
-    auto now = std::chrono::steady_clock::now();
-    fps_counter_++;
+    // auto now = std::chrono::steady_clock::now();
+    // fps_counter_++;
 
-    // 计算时间差 (秒)
-    auto fps_diff =
-      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time_).count();
-    if (fps_diff >= 1000) {  // 超过1000ms
-      RCLCPP_INFO(this->get_logger(), "FPS: %d", fps_counter_);
-      fps_counter_ = 0;
-      last_fps_time_ = now;
-    }
+    // // 计算时间差 (秒)
+    // auto fps_diff =
+    //   std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time_).count();
+    // if (fps_diff >= 1000) {  // 超过1000ms
+    //   RCLCPP_INFO(this->get_logger(), "FPS: %d", fps_counter_);
+    //   fps_counter_ = 0;
+    //   last_fps_time_ = now;
+    //}
 
   }
 };
