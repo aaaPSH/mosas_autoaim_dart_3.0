@@ -12,3 +12,4 @@ Makefile
 *.a
 *.out
 docker/
+COLCON_IGNORE

@@ -218,7 +218,7 @@ private:
         current_params_.pix_offset = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.detect_scale") {
-        current_params_.pix_offset = param.as_double();
+        current_params_.detect_scale = param.as_double();
         algo_params_changed = true;
       }
     }
