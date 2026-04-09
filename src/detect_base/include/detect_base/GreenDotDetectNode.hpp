@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include <filesystem>
 
 class GreenDotDetectNode : public rclcpp::Node
 {
@@ -30,10 +31,15 @@ private:
   //储存计时器
   std::chrono::steady_clock::time_point last_save_time_;
 
+  std::chrono::milliseconds save_interval_{1000/60};
+
+
   // 调试开关
   bool debug_mode_ = false;
+  bool save_images = false;
 
-  DetectParams current_params_;
+
+  DetectParams p;
 
 public:
   GreenDotDetectNode(const rclcpp::NodeOptions & options) : Node("green_dot_detect_node", options)
@@ -67,6 +73,7 @@ public:
     // 2. 声明动态参数 (对应 DetectParams)
     // ==========================================
     this->declare_parameter("debug_mode", true);
+    this->declare_parameter("save_images", false);
 
     // 阈值与形态
     this->declare_parameter("detect.v_low", 100);
@@ -112,28 +119,44 @@ public:
 private:
   void save_image_to_disk(const cv::Mat & image)
   {
-    cv::Mat save_img = image.clone();
-    auto now = std::chrono::system_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
-    std::time_t t = std::chrono::system_clock::to_time_t(now);
+      cv::Mat save_img = image.clone();
+      
+      // 1. 定义你的保存目录
+      std::string save_dir = "/home/nvidia/saved_green_dots";
 
-    std::stringstream ss;
-    ss << "/home/nvidia/saved_green_dots"
-       << "/DOT_" << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
-       << std::setw(3) << ms.count() << ".jpg";
+      // 2. 检查并创建目录 (如果目录不存在，就自动创建它)
+      if (!std::filesystem::exists(save_dir)) {
+          std::filesystem::create_directories(save_dir);
+          // 如果是在 ROS 2 节点中，建议加一句日志打印：
+          // RCLCPP_INFO(this->get_logger(), "Created directory: %s", save_dir.c_str());
+      }
 
-    // 4. 写入
-    cv::imwrite(ss.str(), save_img);
+      auto now = std::chrono::system_clock::now();
+      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+      std::time_t t = std::chrono::system_clock::to_time_t(now);
+
+      std::stringstream ss;
+      ss << save_dir << "/DOT_" 
+        << std::put_time(std::localtime(&t), "%Y%m%d_%H%M%S") << "_" 
+        << std::setfill('0') << std::setw(3) << ms.count() << ".jpg";
+
+      // 3. 写入并检查返回值
+      bool success = cv::imwrite(ss.str(), save_img);
+      if (!success) {
+          // 如果还是失败（比如权限不足），至少你会知道
+          //std::cerr << "Failed to save image to: " << ss.str() << std::endl;
+          RCLCPP_ERROR(this->get_logger(), "Failed to save image to: %s", ss.str().c_str());
+      }
   }
   // -----------------------------------------------------------------
   // 从 ROS 参数服务器读取最新值 -> 打包进 DetectParams -> 传给算法
   // -----------------------------------------------------------------
   void refresh_params()
   {
-    DetectParams p;
 
     // 读取基础控制
     this->get_parameter("debug_mode", debug_mode_);
+    this->get_parameter("save_images", save_images);
 
     // 读取算法参数
     this->get_parameter("detect.v_low", p.v_low);
@@ -185,50 +208,50 @@ private:
       }
       // 2. 算法参数匹配 (注意类型转换)
       else if (name == "detect.v_low") {
-        current_params_.v_low = param.as_int();
+        p.v_low = param.as_int();
         algo_params_changed = true;
       } else if (name == "detect.min_area") {
-        current_params_.min_area = param.as_double();
+        p.min_area = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.max_area") {
-        current_params_.max_area = param.as_double();
+        p.max_area = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.min_aspect_ratio") {
-        current_params_.min_aspect_ratio = param.as_double();
+        p.min_aspect_ratio = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.max_aspect_ratio") {
-        current_params_.max_aspect_ratio = param.as_double();
+        p.max_aspect_ratio = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.min_circularity") {
-        current_params_.min_circularity = param.as_double();
+        p.min_circularity = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.min_gr_ratio") {
-        current_params_.min_gr_ratio = param.as_double();
+        p.min_gr_ratio = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.min_gb_ratio") {
-        current_params_.min_gb_ratio = param.as_double();
+        p.min_gb_ratio = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.search_strip_min_h") {
-        current_params_.search_strip_min_h = param.as_int();
+        p.search_strip_min_h = param.as_int();
         algo_params_changed = true;
       } else if (name == "detect.distance") {
-        current_params_.distance = param.as_double();
+        p.distance = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.pix_offset") {
-        current_params_.pix_offset = param.as_double();
+        p.pix_offset = param.as_double();
         algo_params_changed = true;
       } else if (name == "detect.detect_scale") {
-        current_params_.detect_scale = param.as_double();
+        p.detect_scale = param.as_double();
         algo_params_changed = true;
       }
     }
 
     // 只有当算法相关的参数变化时，才调用 update_params
     if (algo_params_changed) {
-      detector_->update_params(current_params_);
+      detector_->update_params(p);
       RCLCPP_INFO(
         this->get_logger(), "[Dynamic] Algorithm Params Updated! V_Low: %d, Area: %.1f",
-        current_params_.v_low, current_params_.min_area);
+        p.v_low, p.min_area);
     }
 
     return result;
@@ -271,8 +294,8 @@ private:
         double fy = camera_matrix_.at<double>(1, 1);
         double cy = camera_matrix_.at<double>(1, 2);
 
-        double delta_H = current_params_.target_height - current_params_.camera_height;
-        double Z = current_params_.distance;
+        double delta_H = p.target_height - p.camera_height;
+        double Z = p.distance;
 
         // 2. 计算理论上绿点应该出现的 Y 像素坐标
         // (如果 target 比 camera 高，图像上 Y 应该小于 cy，所以用减法)
@@ -309,7 +332,8 @@ private:
       target.x = d.center.x;
       target.y = d.center.y;
       target.angle_yaw = d.yaw;
-      target.d_pixel = target.x - camera_matrix_.at<double>(0, 2) + current_params_.pix_offset;  // 加上像素偏移补偿
+      target.d_pixel = target.x - camera_matrix_.at<double>(0, 2) + p.pix_offset;  // 加上像素偏移补偿
+      //RCLCPP_INFO(this->get_logger(), "%2.f", p.pix_offset);
 
       target_pub->publish(target);
     } else if (!found) {
@@ -323,17 +347,24 @@ private:
       target_pub->publish(target);
     }
 
-    // auto now = std::chrono::steady_clock::now();
-    // fps_counter_++;
+    auto now = std::chrono::steady_clock::now();
+    fps_counter_++;
 
-    // // 计算时间差 (秒)
-    // auto fps_diff =
-    //   std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time_).count();
-    // if (fps_diff >= 1000) {  // 超过1000ms
-    //   RCLCPP_INFO(this->get_logger(), "FPS: %d", fps_counter_);
-    //   fps_counter_ = 0;
-    //   last_fps_time_ = now;
-    //}
+    // 计算时间差 (秒)
+    auto fps_diff =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_fps_time_).count();
+    if (fps_diff >= 1000) {  // 超过1000ms
+      RCLCPP_INFO(this->get_logger(), "FPS: %d", fps_counter_);
+      fps_counter_ = 0;
+      last_fps_time_ = now;
+    }
 
+    auto save_diff =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count();
+    if (save_images && save_diff >= save_interval_.count()) {
+      save_image_to_disk(raw_frame);
+      RCLCPP_INFO(this->get_logger(), "Image saved to disk.");
+      last_save_time_ = now;
+    }
   }
 };

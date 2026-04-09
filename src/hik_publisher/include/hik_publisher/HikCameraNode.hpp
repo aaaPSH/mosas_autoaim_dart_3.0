@@ -257,6 +257,7 @@ public:
     nRet = MV_CC_SetFloatValue(camera_handle_, "Gain", gain);
 
     MV_CC_SetEnumValue(camera_handle_, "TriggerMode", 0);
+    nRet = MV_CC_SetBoolValue(camera_handle_, "AcquisitionFrameRateEnable", false);
   }
 
   rcl_interfaces::msg::SetParametersResult parametersCallback(
