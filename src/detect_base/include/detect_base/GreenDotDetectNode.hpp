@@ -90,6 +90,7 @@ namespace detect_base
     // --- 调试开关 ---
     bool debug_mode_ = false;
     bool save_images_ = false;
+    bool use_game_status_ = true;
 
     // --- 异步保存线程 ---
     std::thread save_thread_;

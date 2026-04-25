@@ -3,13 +3,14 @@
     # 基本配置
     save_path: "./recordings"  # 保存路径（程序同级目录）
     image_topic: "/save_frame"  # 图像话题
+    raw_image_topic: "/image_raw"  # 原始Bayer图像话题
     detection_topic: "/detections/green_dots"  # 检测话题
-    match_status_topic: "/match_status"  # 比赛状态话题（留空接口）
-    
+
     # 录制控制
-    record_images: true  # 是否记录图像
-    record_detections: true  # 是否记录检测数据
-    auto_start: true  # 是否自动开始录制（false=等待比赛开始信号）
+    record_images: false  # 是否记录RGB图像（关闭，只录原始Bayer）
+    record_raw_images: true  # 是否记录原始Bayer图像
+    record_detections: false  # 是否记录检测数据
+    auto_start: false  # 是否自动开始录制（false=等待比赛开始信号）
     
     # 性能配置
     buffer_size: 1000  # 内存缓冲区大小（消息数）
@@ -18,10 +19,10 @@
     
     # 间隔取帧配置（减少资源占用）
     frame_interval: 1  # 每N帧保存一帧，1=每帧都保存，2=每2帧保存1帧，以此类推
-    time_interval_ms: 0  # 时间间隔（毫秒），0=不按时间间隔，1000=每秒保存1帧
+    time_interval_ms: 17  # 时间间隔（毫秒），0=不按时间间隔，1000=每秒保存1帧
     
     # 存储管理
-    max_file_size_mb: 1024  # 单个文件最大大小（MB），1GB
+    max_file_size_mb: 5012  # 单个文件最大大小（MB），1GB
     max_total_size_gb: 10  # 最大总存储空间（GB）
     disk_space_threshold_gb: 5  # 磁盘空间告警阈值（GB）
     

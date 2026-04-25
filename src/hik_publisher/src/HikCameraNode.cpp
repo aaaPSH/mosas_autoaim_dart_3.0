@@ -44,21 +44,7 @@ namespace hik_publisher
 
     MV_CC_GetImageInfo(camera_handle_, &img_info_);
 
-    // 3. 查询设备时间戳频率
-    MVCC_INTVALUE tick_freq;
-    if (MV_CC_GetIntValue(camera_handle_, "DeviceTimestampTickFrequency", &tick_freq) == MV_OK &&
-        tick_freq.nCurValue > 0)
-    {
-      tick_freq_hz_ = tick_freq.nCurValue;
-      RCLCPP_INFO(this->get_logger(), "时间戳 tick 频率: %lu Hz", tick_freq_hz_);
-    }
-    else
-    {
-      tick_freq_hz_ = 1000000000; // GigE Vision: 1 tick = 1 ns
-      RCLCPP_INFO(this->get_logger(), "使用默认 tick 频率: 1 ns/tick");
-    }
-
-    // 4. 预分配缓冲区（只在初始化时分配一次，热路径中不再 resize）
+    // 3. 预分配缓冲区（只在初始化时分配一次，热路径中不再 resize）
     size_t raw_size = img_info_.nHeightMax * img_info_.nWidthMax;
     raw_buffer_.resize(raw_size);
     rgb_msg_.data.resize(raw_size * 3);
@@ -121,10 +107,7 @@ namespace hik_publisher
       {
         fail_count = 0;
 
-        // 硬件时间戳计算
-        uint64_t dev_ticks = out_frame.stFrameInfo.nDevTimeStamp;
-        uint64_t dev_ns = dev_ticks * (1000000000ULL / tick_freq_hz_);
-        rclcpp::Time stamp(dev_ns, RCL_SYSTEM_TIME);
+        rclcpp::Time stamp = this->now();
 
         // 确定 Bayer 编码类型
         std::string bayer_encoding;
@@ -163,34 +146,17 @@ namespace hik_publisher
             memcpy(raw_buffer_.data(), out_frame.pBufAddr, frame_len);
           }
 
-          // 发布 /image_raw —— 零拷贝 Loaned Message
-          auto loaned_msg = raw_pub_->borrow_loaned_message();
-          if (loaned_msg.is_valid())
-          {
-            auto &msg = loaned_msg.get();
-            msg.header.stamp = stamp;
-            msg.header.frame_id = "camera_optical_frame";
-            msg.encoding = bayer_encoding;
-            msg.height = height;
-            msg.width = width;
-            msg.step = width;
-            msg.data.resize(frame_len);
-            memcpy(msg.data.data(), out_frame.pBufAddr, frame_len);
-            raw_pub_->publish(std::move(loaned_msg));
-          }
-          else
-          {
-            auto msg = std::make_unique<sensor_msgs::msg::Image>();
-            msg->header.stamp = stamp;
-            msg->header.frame_id = "camera_optical_frame";
-            msg->encoding = bayer_encoding;
-            msg->height = height;
-            msg->width = width;
-            msg->step = width;
-            msg->data.resize(frame_len);
-            memcpy(msg->data.data(), out_frame.pBufAddr, frame_len);
-            raw_pub_->publish(std::move(msg));
-          }
+          // 发布 /image_raw —— 使用 unique_ptr（兼容 intra-process）
+          auto msg = std::make_unique<sensor_msgs::msg::Image>();
+          msg->header.stamp = stamp;
+          msg->header.frame_id = "camera_optical_frame";
+          msg->encoding = bayer_encoding;
+          msg->height = height;
+          msg->width = width;
+          msg->step = width;
+          msg->data.resize(frame_len);
+          memcpy(msg->data.data(), out_frame.pBufAddr, frame_len);
+          raw_pub_->publish(std::move(msg));
         }
 
         // 释放 SDK 缓冲区 —— 相机可开始下一次曝光

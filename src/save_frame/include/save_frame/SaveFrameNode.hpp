@@ -75,6 +75,9 @@ namespace save_frame
     /** @brief 图像话题回调 */
     void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
 
+    /** @brief 原始图像话题回调 */
+    void rawImageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
+
     /** @brief 检测结果话题回调 */
     void detectionCallback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg);
 
@@ -126,10 +129,12 @@ namespace save_frame
     // --- 配置参数 ---
     std::string save_path_;
     std::string image_topic_;
+    std::string raw_image_topic_;
     std::string detection_topic_;
     std::string game_status_topic_;
     bool use_game_status_;
     bool record_images_;
+    bool record_raw_images_;
     bool record_detections_;
     bool auto_start_;
     size_t buffer_size_;
@@ -142,8 +147,10 @@ namespace save_frame
     // --- 间隔取帧参数 ---
     size_t frame_interval_;
     size_t frame_counter_;
+    size_t raw_frame_counter_;
     int64_t time_interval_ms_;
     std::chrono::steady_clock::time_point last_saved_time_;
+    std::chrono::steady_clock::time_point last_raw_saved_time_;
 
     // --- 相机内参（从话题获取） ---
     std::vector<double> camera_matrix_;
@@ -168,6 +175,7 @@ namespace save_frame
 
     // --- ROS 组件 ---
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr raw_image_sub_;
     rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr detection_sub_;
     rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr game_status_sub_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;

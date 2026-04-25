@@ -7,6 +7,8 @@
     debug_mode: true
     # 自动保存：检测到目标后是否保存图片到 ~/saved_green_dots
     save_images: false
+    # 是否根据比赛阶段控制内录：true=仅比赛阶段(status==4)时内录，false=只要save_images为true就内录
+    use_game_status: true
     # 保存帧率：每秒保存的帧数（仅当save_images为true时生效）
     save_fps: 60.0
     # 保存目录：图片保存的基础路径（节点启动时创建时间子目录）
@@ -29,7 +31,7 @@
       
       # 绿/蓝 比率 (Green / Blue)
       # 同样，绿灯的 G 远大于 B。
-      min_gb_ratio: 0.8
+      min_gb_ratio: 1.2
 
       # --- 空间搜索条带 ---
       # 最小搜索带高度 (像素)。

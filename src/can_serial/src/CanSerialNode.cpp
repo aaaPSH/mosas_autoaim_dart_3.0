@@ -82,6 +82,14 @@ CanSerialNode::CanSerialNode(const rclcpp::NodeOptions & options)
       std::chrono::milliseconds(500),
       std::bind(&CanSerialNode::publish_can_hw_state, this));
 
+  // 探测帧定时器，不受 calibrated 限制，用于检测总线上是否有设备
+  probe_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(500),
+      std::bind(&CanSerialNode::send_probe, this));
+
+  // 立即发布一次初始CAN硬件状态，确保SystemMonitorNode能尽快收到
+  publish_can_hw_state();
+
   // ================= [4. 初始化订阅者] =================
   green_dots_sub_ = this->create_subscription<autoaim_interfaces::msg::GreenDot>(
     "/detections/green_dots", rclcpp::SensorDataQoS(),
@@ -133,6 +141,11 @@ rcl_interfaces::msg::SetParametersResult CanSerialNode::parameters_callback(
 void CanSerialNode::handle_can_frame(const can_frame & frame)
 {
   if (frame.can_id == CAN_RX_ID && frame.can_dlc >= CAN_MIN_RX_DLC) {
+    // 收到有效数据帧，下位机在线
+    slave_alive_ = true;
+    last_slave_rx_time_ = this->now();
+    can_core_->clear_no_ack();
+
     std::lock_guard<std::mutex> lock(data_mutex_);
     this->g_command_.calibrated = frame.data[3];
     this->g_command_.current_game_status = static_cast<GameStatus>(frame.data[5]);
@@ -291,9 +304,32 @@ void CanSerialNode::publish_can_hw_state()
   if (!can_core_->is_interface_up()) {
     msg.data = 4;  // INTERFACE_DOWN
   } else {
-    msg.data = can_core_->get_controller_state();  // 0~3
+    int state = can_core_->get_controller_state();
+    if (state == 0) {
+      // CAN 控制器 ACTIVE，检查下位机是否在线
+      if (can_core_->get_no_ack()) {
+        state = 5;  // NO_SLAVE：发送探测帧无设备响应
+      } else if (!slave_alive_) {
+        state = 5;  // NO_SLAVE：从未收到下位机数据
+      }
+    }
+    msg.data = state;
   }
   can_hw_state_pub_->publish(msg);
+}
+
+void CanSerialNode::send_probe()
+{
+  // 发送探测帧，不受 calibrated 限制，用于检测总线上是否有设备
+  can_frame probe{};
+  probe.can_id = CAN_TX_ID;
+  probe.can_dlc = CAN_FRAME_DLC;
+  std::memset(probe.data, 0, CAN_FRAME_DLC);
+  try {
+    can_core_->send_frame(probe);
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(get_logger(), "探测帧发送异常: %s", e.what());
+  }
 }
 
 }  // namespace can_serial

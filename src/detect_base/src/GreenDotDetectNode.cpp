@@ -55,6 +55,7 @@ namespace detect_base
     // ==========================================
     this->declare_parameter("debug_mode", true);
     this->declare_parameter("save_images", false);
+    this->declare_parameter("use_game_status", true);
     this->declare_parameter("save_fps", 60.0);
     this->declare_parameter("save_path", save_path_);
 
@@ -81,6 +82,8 @@ namespace detect_base
 
     // 首次同步参数
     refreshParams();
+    use_game_status_ = this->get_parameter("use_game_status").as_bool();
+    if (!use_game_status_) game_started_.store(true);
 
     // ==========================================
     // 3. 注册回调
@@ -98,7 +101,7 @@ namespace detect_base
         "/game_status", rclcpp::SensorDataQoS(),
         [this](const std_msgs::msg::UInt8::SharedPtr msg)
         {
-          game_started_.store(msg->data == 4);
+          if (use_game_status_) game_started_.store(msg->data == 4);
         });
 
     target_pub_ = this->create_publisher<autoaim_interfaces::msg::GreenDot>(
@@ -185,6 +188,12 @@ namespace detect_base
       {
         save_images_ = param.as_bool();
         RCLCPP_INFO(this->get_logger(), "保存图像: %d", save_images_);
+      }
+      else if (name == "use_game_status")
+      {
+        use_game_status_ = param.as_bool();
+        if (!use_game_status_) game_started_.store(true);
+        RCLCPP_INFO(this->get_logger(), "使用比赛阶段控制内录: %d", use_game_status_);
       }
       else if (name == "save_fps")
       {

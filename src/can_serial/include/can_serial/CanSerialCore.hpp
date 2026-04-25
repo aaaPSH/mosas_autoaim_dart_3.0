@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <atomic>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -76,6 +77,12 @@ public:
    */
   int get_controller_state() const { return controller_state_; }
 
+  /** @brief 是否检测到 ACK 错误（总线上无设备响应） */
+  bool get_no_ack() const { return no_ack_detected_.load(); }
+
+  /** @brief 清除 ACK 错误标志 */
+  void clear_no_ack() { no_ack_detected_.store(false); }
+
   /** @brief Boost.Asio I/O 线程 */
   std::thread io_thread_;
 
@@ -102,6 +109,9 @@ private:
 
   /** @brief CAN 控制器状态：0=ACTIVE, 1=WARNING, 2=PASSIVE, 3=BUS_OFF, 4=INTERFACE_DOWN */
   int controller_state_ = 0;
+
+  /** @brief 是否检测到 ACK 错误（发送后无设备响应） */
+  std::atomic<bool> no_ack_detected_{false};
 };
 
 }  // namespace can_serial

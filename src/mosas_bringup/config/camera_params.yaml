@@ -2,4 +2,4 @@
   ros__parameters:
     camera_name: hik_camera
     exposure_time: 2000.0
-    gain: 12.0
+    gain: 0.0

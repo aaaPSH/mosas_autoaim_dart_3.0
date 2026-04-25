@@ -60,6 +60,9 @@ private:
   /** @brief 定时上报 CAN 硬件状态 */
   void publish_can_hw_state();
 
+  /** @brief 发送探测帧（不受 calibrated 限制） */
+  void send_probe();
+
 
   // --- 订阅者与发布者 ---
   rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr green_dots_sub_;
@@ -69,6 +72,7 @@ private:
   // --- 定时器 ---
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::TimerBase::SharedPtr can_state_timer_;
+  rclcpp::TimerBase::SharedPtr probe_timer_;
 
   // --- CAN 通信 ---
   std::unique_ptr<CanSerial> can_core_;
@@ -145,6 +149,10 @@ private:
 
   rclcpp::Time last_time_;
   rclcpp::Duration dt_ = rclcpp::Duration::from_seconds(0);
+
+  // --- 下位机在线检测 ---
+  bool slave_alive_{false};
+  rclcpp::Time last_slave_rx_time_;
 };
 
 }  // namespace can_serial

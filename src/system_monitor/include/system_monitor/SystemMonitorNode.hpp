@@ -78,6 +78,7 @@ namespace system_monitor
     int can_timeout_ms_;
 
     // --- 时间跟踪 ---
+    rclcpp::Time startup_time_;
     rclcpp::Time last_can_hw_state_time_;
     rclcpp::Time last_green_dot_time_;
     rclcpp::Time last_log_time_;

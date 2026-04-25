@@ -83,10 +83,18 @@ void CanSerial::handle_received(const boost::system::error_code & ec, size_t byt
 void CanSerial::handle_error_frame(const can_frame & frame)
 {
   if (frame.can_id & CAN_ERR_CRTL) {
-    controller_state_ = frame.data[1];
+    // data[1] 低 2 位是控制器状态 (0-3)，高位是溢出等错误标志
+    // 只取低 2 位避免将溢出标志误认为状态值
+    int raw = frame.data[1] & 0x03;
+    if (raw <= 3) {
+      controller_state_ = raw;
+    }
   }
   if (frame.can_id & CAN_ERR_BUSOFF) {
     controller_state_ = 3;
+  }
+  if (frame.can_id & CAN_ERR_ACK) {
+    no_ack_detected_.store(true);
   }
 }
 

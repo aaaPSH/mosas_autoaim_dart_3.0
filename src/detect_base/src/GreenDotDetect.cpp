@@ -266,13 +266,14 @@ namespace detect_base
       }
 
       double ratio_gr = 0;
+      double ratio_gb = 0;
       if (pixel_count > 0)
       {
         double avgG = sumG / pixel_count;
         double avgR = sumR / pixel_count;
         double avgB = sumB / pixel_count;
         ratio_gr = avgG / (avgR + 1.0);
-        double ratio_gb = avgG / (avgB + 1.0);
+        ratio_gb = avgG / (avgB + 1.0);
 
         if (ratio_gr < params_.min_gr_ratio || ratio_gb < params_.min_gb_ratio)
         {
@@ -313,7 +314,7 @@ namespace detect_base
         cv::Point2f global_center = cv::Point2f(global_r.x, global_r.y) + local_sub_center;
         cv::drawMarker(debug_vis_full, global_center, cv::Scalar(0, 255, 0), cv::MARKER_CROSS, 15, 2);
         cv::putText(
-            debug_vis_full, cv::format("%.1f", ratio_gr), global_pt_draw - cv::Point(0, 5),
+            debug_vis_full, cv::format("GR=%.1f GB=%.1f", ratio_gr, ratio_gb), global_pt_draw - cv::Point(0, 5),
             cv::FONT_HERSHEY_PLAIN, 0.9, cv::Scalar(0, 255, 0), 1);
 
         // B. 制作放大图 (Chip) - 统一高度为 64 像素

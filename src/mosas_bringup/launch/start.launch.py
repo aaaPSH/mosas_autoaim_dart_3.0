@@ -21,8 +21,8 @@ def generate_launch_description():
         default=os.path.join(
             get_package_share_directory('mosas_bringup'),
             'config',
-            'base_detect.yaml'
-            # 'base_detect_test.yaml'
+            # 'base_detect.yaml'
+            'base_detect_test.yaml'
         )
     )
     system_monitor_params_file = LaunchConfiguration(

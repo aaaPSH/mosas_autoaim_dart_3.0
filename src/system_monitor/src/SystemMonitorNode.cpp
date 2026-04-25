@@ -34,6 +34,11 @@ namespace system_monitor
     can_hw_state_received_ = false;
     green_dot_received_ = false;
 
+    // 初始化时间跟踪，避免首次回调时未定义行为
+    startup_time_ = this->now();
+    last_can_hw_state_time_ = this->now();
+    last_green_dot_time_ = this->now();
+
     // 生成带时间戳的日志文件名
     std::string log_filename = generateLogFilename();
     std::filesystem::create_directories(log_path_);
@@ -102,15 +107,29 @@ namespace system_monitor
 
   void SystemMonitorNode::canHwStateCallback(const std_msgs::msg::UInt8::SharedPtr msg)
   {
+    uint8_t state = msg->data;
+    // 验证状态值是否在已知范围内，未知状态视为未收到有效数据
+    bool valid = (state <= 5 || state == 255);
+    if (!valid)
+    {
+      RCLCPP_WARN(this->get_logger(), "收到未知 CAN 状态码: %u, 忽略",
+                   static_cast<unsigned>(state));
+      return;
+    }
     can_hw_state_received_ = true;
     last_can_hw_state_time_ = this->now();
-    last_can_hw_state_ = msg->data;
+    last_can_hw_state_ = state;
+    RCLCPP_DEBUG(this->get_logger(), "CAN hw state received: %u", static_cast<unsigned>(state));
   }
 
   void SystemMonitorNode::timerCallback()
   {
+    // 启动宽限期：前3秒跳过CAN超时检测，等待DDS连接建立
+    auto uptime_ms = (this->now() - startup_time_).seconds() * 1000.0;
+    bool in_startup_grace = uptime_ms < 3000.0;
+
     // 检查CAN硬件状态超时（如果超过can_timeout_ms_没有收到状态更新，认为CanSerialNode挂了）
-    if (can_hw_state_received_)
+    if (can_hw_state_received_ && !in_startup_grace)
     {
       auto now = this->now();
       auto elapsed_ms = (now - last_can_hw_state_time_).seconds() * 1000.0;
@@ -142,6 +161,11 @@ namespace system_monitor
     if (can_hw_state_received_)
     {
       can_status_str = hwStateToString(last_can_hw_state_);
+      if (can_status_str == "UNKNOWN")
+      {
+        RCLCPP_WARN(this->get_logger(), "CAN hardware state UNKNOWN (raw=%u), possible initialization issue",
+                     static_cast<unsigned>(last_can_hw_state_));
+      }
     }
     else
     {
@@ -172,7 +196,7 @@ namespace system_monitor
     writeLog(log_message);
 
     // 同时输出到ROS日志
-    RCLCPP_INFO(this->get_logger(), "%s", log_message.c_str());
+    // RCLCPP_INFO(this->get_logger(), "%s", log_message.c_str());
   }
 
   std::string SystemMonitorNode::hwStateToString(uint8_t state)
@@ -189,6 +213,8 @@ namespace system_monitor
       return "BUS_OFF";
     case 4:
       return "IF_DOWN";
+    case 5:
+      return "NO_SLAVE";
     case 255:
       return "TIMEOUT";
     default:

@@ -74,11 +74,13 @@ namespace save_frame
     // 基本配置
     save_path_ = this->declare_parameter("save_path", "./recordings");
     image_topic_ = this->declare_parameter("image_topic", "/save_frame");
+    raw_image_topic_ = this->declare_parameter("raw_image_topic", "/image_raw");
     detection_topic_ = this->declare_parameter("detection_topic", "/detections/green_dots");
     game_status_topic_ = this->declare_parameter("game_status_topic", "/game_status");
     use_game_status_ = this->declare_parameter("use_game_status", true);
 
     record_images_ = this->declare_parameter("record_images", true);
+    record_raw_images_ = this->declare_parameter("record_raw_images", true);
     record_detections_ = this->declare_parameter("record_detections", true);
     auto_start_ = this->declare_parameter("auto_start", false);
 
@@ -123,6 +125,14 @@ namespace save_frame
           image_topic_, rclcpp::SensorDataQoS(),
           std::bind(&SaveFrameNode::imageCallback, this, std::placeholders::_1));
       RCLCPP_INFO(this->get_logger(), "Subscribed to image topic: %s", image_topic_.c_str());
+    }
+
+    if (record_raw_images_)
+    {
+      raw_image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+          raw_image_topic_, rclcpp::SensorDataQoS(),
+          std::bind(&SaveFrameNode::rawImageCallback, this, std::placeholders::_1));
+      RCLCPP_INFO(this->get_logger(), "Subscribed to raw image topic: %s", raw_image_topic_.c_str());
     }
 
     if (record_detections_)
@@ -194,10 +204,17 @@ namespace save_frame
     uint64_t available_space = getAvailableDiskSpace(save_path_);
     if (available_space < disk_space_threshold_gb_ * 1024ULL * 1024ULL * 1024ULL)
     {
-      RCLCPP_WARN(this->get_logger(), "Low disk space: %lu MB available. Stopping recording.",
+      RCLCPP_WARN(this->get_logger(), "Low disk space: %lu MB available. Attempting to clean up old files...",
                   available_space / (1024 * 1024));
-      stopRecording();
-      return;
+      cleanupOldFiles();
+      available_space = getAvailableDiskSpace(save_path_);
+      if (available_space < disk_space_threshold_gb_ * 1024ULL * 1024ULL * 1024ULL)
+      {
+        RCLCPP_WARN(this->get_logger(), "Still low disk space: %lu MB available after cleanup. Stopping recording.",
+                    available_space / (1024 * 1024));
+        stopRecording();
+        return;
+      }
     }
 
     // 间隔取帧逻辑
@@ -265,6 +282,73 @@ namespace save_frame
       frames_received_ = 0;
       last_stat_time_ = now;
     }
+  }
+
+  void SaveFrameNode::rawImageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
+  {
+    if (!is_recording_ || !record_raw_images_)
+    {
+      return;
+    }
+
+    // 检查磁盘空间
+    uint64_t available_space = getAvailableDiskSpace(save_path_);
+    if (available_space < disk_space_threshold_gb_ * 1024ULL * 1024ULL * 1024ULL)
+    {
+      RCLCPP_WARN(this->get_logger(), "Low disk space: %lu MB available. Attempting to clean up old files...",
+                  available_space / (1024 * 1024));
+      cleanupOldFiles();
+      available_space = getAvailableDiskSpace(save_path_);
+      if (available_space < disk_space_threshold_gb_ * 1024ULL * 1024ULL * 1024ULL)
+      {
+        RCLCPP_WARN(this->get_logger(), "Still low disk space: %lu MB available after cleanup. Stopping recording.",
+                    available_space / (1024 * 1024));
+        stopRecording();
+        return;
+      }
+    }
+
+    // 间隔取帧逻辑
+    bool should_save = true;
+
+    if (frame_interval_ > 1)
+    {
+      raw_frame_counter_++;
+      if (raw_frame_counter_ % frame_interval_ != 0)
+      {
+        should_save = false;
+      }
+    }
+
+    if (time_interval_ms_ > 0)
+    {
+      auto now = std::chrono::steady_clock::now();
+      auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - last_raw_saved_time_)
+                            .count();
+
+      if (elapsed_ms < time_interval_ms_)
+      {
+        should_save = false;
+      }
+      else
+      {
+        last_raw_saved_time_ = now;
+      }
+    }
+
+    if (!should_save)
+    {
+      return;
+    }
+
+    // 序列化消息
+    rclcpp::Serialization<sensor_msgs::msg::Image> serialization;
+    rclcpp::SerializedMessage serialized_msg;
+    serialization.serialize_message(msg.get(), &serialized_msg);
+
+    // 添加到缓冲区
+    addToBuffer(raw_image_topic_, serialized_msg);
   }
 
   void SaveFrameNode::detectionCallback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg)
@@ -426,6 +510,7 @@ namespace save_frame
       if (total_recorded_size_ > max_total_size_gb_ * 1024ULL * 1024ULL * 1024ULL)
       {
         cleanupOldFiles();
+        total_recorded_size_ = 0;
       }
     }
   }
@@ -607,6 +692,9 @@ namespace save_frame
 
     try
     {
+      // 录制开始前清理旧文件，为新录制腾出空间
+      cleanupOldFiles();
+
       // 创建按时间命名的录制目录
       createRecordingDir();
 
@@ -619,7 +707,9 @@ namespace save_frame
       messages_dropped_ = 0;
       current_file_size_ = 0;
       frame_counter_ = 0;
+      raw_frame_counter_ = 0;
       last_saved_time_ = std::chrono::steady_clock::now();
+      last_raw_saved_time_ = std::chrono::steady_clock::now();
 
       // 创建bag文件在录制目录中
       createNewBagFile();
@@ -732,6 +822,19 @@ namespace save_frame
       catch (const std::exception &e)
       {
         RCLCPP_WARN(this->get_logger(), "Failed to create image topic: %s", e.what());
+      }
+    }
+
+    if (record_raw_images_)
+    {
+      try
+      {
+        bag_writer_->create_topic(
+            {raw_image_topic_, "sensor_msgs/msg/Image", "cdr", ""});
+      }
+      catch (const std::exception &e)
+      {
+        RCLCPP_WARN(this->get_logger(), "Failed to create raw image topic: %s", e.what());
       }
     }
 

@@ -64,7 +64,6 @@ namespace hik_publisher
     MV_IMAGE_BASIC_INFO img_info_{};
     MV_CC_PIXEL_CONVERT_PARAM convert_param_{};
     int last_result_ = MV_OK;
-    uint64_t tick_freq_hz_ = 1000000000;
 
     // --- 线程 ---
     std::thread capture_thread_;

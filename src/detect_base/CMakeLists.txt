@@ -46,7 +46,6 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE green_dot_node
 )
 
-
 ament_auto_package(
   INSTALL_TO_SHARE
 )
