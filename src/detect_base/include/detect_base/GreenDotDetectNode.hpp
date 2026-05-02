@@ -21,6 +21,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 #include <filesystem>
 
 namespace detect_base
@@ -57,7 +58,11 @@ namespace detect_base
 
     // --- 订阅者 & 发布者 ---
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr sub_image_;
+    rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr game_status_sub_;
     rclcpp::Publisher<autoaim_interfaces::msg::GreenDot>::SharedPtr target_pub_;
+
+    // --- 比赛状态 ---
+    std::atomic<bool> game_started_{false};
 
     // --- 检测算法实例 ---
     std::shared_ptr<GreenDotDetect> detector_;

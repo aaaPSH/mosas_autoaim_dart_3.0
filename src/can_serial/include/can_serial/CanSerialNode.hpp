@@ -38,7 +38,7 @@ public:
    * @param speed 云台旋转速度
    * @param fire 是否开火
    */
-  void send_command(double speed, bool fire);
+  void send_command();
 
   /**
    * @brief 处理接收到的 CAN 帧
@@ -60,12 +60,11 @@ private:
   /** @brief 定时上报 CAN 硬件状态 */
   void publish_can_hw_state();
 
-  /** @brief 解析下位机回复的数据 */
-  void parse_received_data();
 
   // --- 订阅者与发布者 ---
   rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr green_dots_sub_;
   rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr can_hw_state_pub_;
+  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr game_status_pub_;
 
   // --- 定时器 ---
   rclcpp::TimerBase::SharedPtr timer_;
@@ -91,14 +90,26 @@ private:
   enum class AimState { TRACKING, VERIFYING, LOCKED, LOST };
 
   // --- 状态变量 ---
-  bool shooting_ = false;
-  bool calibrated_ = false;
-  GameStatus current_game_status_ = GameStatus::PRE_PREPARATION;
   AimState current_state_ = AimState::LOST;
   std::vector<double> history_x_;
   int lost_frames_count_ = 0;
   int16_t last_valid_speed_ = 0;
   bool first_run_ = true;
+
+  //下位机发送的变量
+  struct send_command
+  {
+    bool can_shoot = false;
+    double speed = 0.0;
+    bool detected = false;
+  } s_command_;
+
+  struct get_command
+  {
+    bool calibrated = false;
+    GameStatus current_game_status = GameStatus::PRE_PREPARATION;
+  } g_command_;
+  
 
   // --- 参数回调句柄 ---
   OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;

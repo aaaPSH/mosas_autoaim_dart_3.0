@@ -93,6 +93,14 @@ namespace detect_base
         "/image_raw", rclcpp::SensorDataQoS(),
         std::bind(&GreenDotDetectNode::imageCallback, this, std::placeholders::_1));
 
+    // 订阅比赛状态
+    game_status_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
+        "/game_status", rclcpp::SensorDataQoS(),
+        [this](const std_msgs::msg::UInt8::SharedPtr msg)
+        {
+          game_started_.store(msg->data == 4);
+        });
+
     target_pub_ = this->create_publisher<autoaim_interfaces::msg::GreenDot>(
         "/detections/green_dots", rclcpp::SensorDataQoS().keep_last(1));
 
@@ -379,7 +387,7 @@ namespace detect_base
 
     auto save_diff =
         std::chrono::duration_cast<std::chrono::milliseconds>(now - last_save_time_).count();
-    if (save_images_ && save_diff >= save_interval_.count())
+    if (save_images_ && game_started_.load() && save_diff >= save_interval_.count())
     {
       {
         std::lock_guard<std::mutex> lock(save_mutex_);

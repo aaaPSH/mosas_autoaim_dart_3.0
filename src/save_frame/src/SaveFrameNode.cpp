@@ -43,7 +43,7 @@ namespace save_frame
     RCLCPP_INFO(this->get_logger(), "Save path: %s", save_path_.c_str());
     RCLCPP_INFO(this->get_logger(), "Image topic: %s", image_topic_.c_str());
     RCLCPP_INFO(this->get_logger(), "Detection topic: %s", detection_topic_.c_str());
-    RCLCPP_INFO(this->get_logger(), "Match status topic: %s", match_status_topic_.c_str());
+    RCLCPP_INFO(this->get_logger(), "Game status topic: %s", game_status_topic_.c_str());
   }
 
   SaveFrameNode::~SaveFrameNode()
@@ -75,7 +75,8 @@ namespace save_frame
     save_path_ = this->declare_parameter("save_path", "./recordings");
     image_topic_ = this->declare_parameter("image_topic", "/save_frame");
     detection_topic_ = this->declare_parameter("detection_topic", "/detections/green_dots");
-    match_status_topic_ = this->declare_parameter("match_status_topic", "/match_status");
+    game_status_topic_ = this->declare_parameter("game_status_topic", "/game_status");
+    use_game_status_ = this->declare_parameter("use_game_status", true);
 
     record_images_ = this->declare_parameter("record_images", true);
     record_detections_ = this->declare_parameter("record_detections", true);
@@ -132,11 +133,14 @@ namespace save_frame
       RCLCPP_INFO(this->get_logger(), "Subscribed to detection topic: %s", detection_topic_.c_str());
     }
 
-    // 比赛状态订阅（使用std_msgs::msg::String作为通用接口）
-    match_status_sub_ = this->create_subscription<std_msgs::msg::String>(
-        match_status_topic_, rclcpp::SensorDataQoS(),
-        std::bind(&SaveFrameNode::matchStatusCallback, this, std::placeholders::_1));
-    RCLCPP_INFO(this->get_logger(), "Subscribed to match status topic: %s", match_status_topic_.c_str());
+    // 比赛状态订阅
+    if (use_game_status_)
+    {
+      game_status_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
+          game_status_topic_, rclcpp::SensorDataQoS(),
+          std::bind(&SaveFrameNode::gameStatusCallback, this, std::placeholders::_1));
+      RCLCPP_INFO(this->get_logger(), "Subscribed to game status topic: %s", game_status_topic_.c_str());
+    }
   }
 
   void SaveFrameNode::initRecording()
@@ -279,29 +283,24 @@ namespace save_frame
     addToBuffer(detection_topic_, serialized_msg);
   }
 
-  void SaveFrameNode::matchStatusCallback(const std_msgs::msg::String::SharedPtr msg)
+  void SaveFrameNode::gameStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg)
   {
-    std::string status = msg->data;
-    RCLCPP_INFO(this->get_logger(), "Received match status: %s", status.c_str());
+    uint8_t status = msg->data;
+    RCLCPP_INFO(this->get_logger(), "Received game status: %u", status);
 
-    // 简单的状态解析：如果消息包含"start"，则开始录制；包含"stop"，则停止录制
-    if (status.find("start") != std::string::npos || status.find("START") != std::string::npos)
+    if (status == 4) // IN_GAME
     {
       if (!is_recording_)
       {
+        RCLCPP_INFO(this->get_logger(), "Game started, starting recording");
         startRecording();
-        // 尝试从消息中提取比赛ID
-        size_t id_start = status.find("id:");
-        if (id_start != std::string::npos)
-        {
-          current_match_id_ = status.substr(id_start + 3);
-        }
       }
     }
-    else if (status.find("stop") != std::string::npos || status.find("STOP") != std::string::npos)
+    else if (status == 5) // END_GAME
     {
       if (is_recording_)
       {
+        RCLCPP_INFO(this->get_logger(), "Game ended, stopping recording");
         stopRecording();
       }
     }

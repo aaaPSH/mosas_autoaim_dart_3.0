@@ -31,7 +31,7 @@
 #include "rosbag2_storage/storage_options.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 #include "rclcpp/parameter_client.hpp"
 
 namespace save_frame
@@ -79,7 +79,7 @@ namespace save_frame
     void detectionCallback(const autoaim_interfaces::msg::GreenDot::SharedPtr msg);
 
     /** @brief 比赛状态话题回调 */
-    void matchStatusCallback(const std_msgs::msg::String::SharedPtr msg);
+    void gameStatusCallback(const std_msgs::msg::UInt8::SharedPtr msg);
 
     /** @brief 相机内参话题回调 */
     void cameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
@@ -127,7 +127,8 @@ namespace save_frame
     std::string save_path_;
     std::string image_topic_;
     std::string detection_topic_;
-    std::string match_status_topic_;
+    std::string game_status_topic_;
+    bool use_game_status_;
     bool record_images_;
     bool record_detections_;
     bool auto_start_;
@@ -168,7 +169,7 @@ namespace save_frame
     // --- ROS 组件 ---
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
     rclcpp::Subscription<autoaim_interfaces::msg::GreenDot>::SharedPtr detection_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr match_status_sub_;
+    rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr game_status_sub_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
     std::unique_ptr<rosbag2_cpp::writers::SequentialWriter> bag_writer_;
     rclcpp::TimerBase::SharedPtr deferred_start_timer_;
